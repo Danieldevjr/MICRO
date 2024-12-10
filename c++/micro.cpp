@@ -1,113 +1,109 @@
-#include <iostream>
-#include <string>
-#include <map>
-#include <ctime>
-#include <cstdlib>
+#include <WiFi.h>
+#include <ESP32WebServer.h>
+#include <ArduinoJson.h>  // Para enviar e receber dados em formato JSON
 
-// Estrutura para monitoramento de ambientes
-class Sensor {
-public:
-    virtual void readData() = 0;
-};
+// Credenciais Wi-Fi
+const char* ssid = "YOUR_SSID";
+const char* password = "YOUR_PASSWORD";
 
-class SensorLuz : public Sensor {
-public:
-    void readData() override {
-        // Aqui você poderia ler o valor real do sensor
-        std::cout << "Luz: " << rand() % 100 << " lux" << std::endl;
+// Configuração do servidor HTTP
+ESP32WebServer server(80);
+
+// Funções para sensores (simuladas, você pode substituir com leitura de sensores reais)
+int readLuz() {
+    return random(0, 100);  // Simula o nível de luz (0-100 lux)
+}
+
+int readTemperatura() {
+    return random(20, 30);  // Simula a temperatura (20-30°C)
+}
+
+int readUmidade() {
+    return random(50, 80);  // Simula a umidade (50-80%)
+}
+
+bool readPresenca() {
+    return random(0, 2) == 0;  // Simula presença (true ou false)
+}
+
+bool readGases() {
+    return random(0, 2) == 0;  // Simula presença de gases (true ou false)
+}
+
+// Funções para controlar atuadores (simuladas)
+void controlLuz(bool action) {
+    Serial.println(action ? "Luz ligada" : "Luz desligada");
+}
+
+void controlArCondicionado(bool action) {
+    Serial.println(action ? "Ar-condicionado ligado" : "Ar-condicionado desligado");
+}
+
+// Rota para obter os dados dos sensores
+void handleGetSensorsData() {
+    StaticJsonDocument<200> doc;
+    doc["luz"] = readLuz();
+    doc["temperatura"] = readTemperatura();
+    doc["umidade"] = readUmidade();
+    doc["presenca"] = readPresenca() ? "Presente" : "Ausente";
+    doc["gases"] = readGases() ? "Detectado" : "Não detectado";
+
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}
+
+// Rota para controlar os atuadores (Luz e Ar Condicionado)
+void handleControlActuators() {
+    if (server.hasArg("luz")) {
+        String luz = server.arg("luz");
+        controlLuz(luz == "on");
     }
-};
-
-class SensorTemperatura : public Sensor {
-public:
-    void readData() override {
-        std::cout << "Temperatura: " << (rand() % 10 + 20) << " °C" << std::endl;
+    if (server.hasArg("ar_condicionado")) {
+        String ac = server.arg("ar_condicionado");
+        controlArCondicionado(ac == "on");
     }
-};
 
-class SensorUmidade : public Sensor {
-public:
-    void readData() override {
-        std::cout << "Umidade: " << (rand() % 30 + 50) << "%" << std::endl;
-    }
-};
+    server.send(200, "text/plain", "Comando recebido");
+}
 
-class SensorGases : public Sensor {
-public:
-    void readData() override {
-        // Aqui poderia ser detectado a presença de gases nocivos
-        std::cout << "Gases nocivos: " << (rand() % 2 == 0 ? "Não detectado" : "Detectado") << std::endl;
-    }
-};
-
-class SensorPresenca : public Sensor {
-public:
-    void readData() override {
-        std::cout << "Presença: " << (rand() % 2 == 0 ? "Ausente" : "Presente") << std::endl;
-    }
-};
-
-// Classe para atuadores
-class Atuador {
-public:
-    virtual void control(bool action) = 0;
-};
-
-class AtuadorLuz : public Atuador {
-public:
-    void control(bool action) override {
-        std::cout << "Luz " << (action ? "ligada" : "desligada") << std::endl;
-    }
-};
-
-class AtuadorArCondicionado : public Atuador {
-public:
-    void control(bool action) override {
-        std::cout << "Ar-condicionado " << (action ? "ligado" : "desligado") << std::endl;
-    }
-};
-
-// Classe para controle de rotinas
-class SistemaAutomacao {
-public:
-    void configurarRotinaPresenca(bool presenca) {
+// Rota para definir a rotina automatizada
+void handleSetRoutine() {
+    if (server.hasArg("presenca")) {
+        bool presenca = server.arg("presenca") == "true";
         if (presenca) {
-            std::cout << "Rotina: Ajustar dispositivos conforme preferências de presença." << std::endl;
+            controlLuz(true);
+            controlArCondicionado(true);
         } else {
-            std::cout << "Rotina: Desligar dispositivos para economia de energia." << std::endl;
+            controlLuz(false);
+            controlArCondicionado(false);
         }
     }
-};
+    server.send(200, "text/plain", "Rotina configurada");
+}
 
-int main() {
-    // Criar instâncias dos sensores
-    SensorLuz sensorLuz;
-    SensorTemperatura sensorTemperatura;
-    SensorUmidade sensorUmidade;
-    SensorGases sensorGases;
-    SensorPresenca sensorPresenca;
+void setup() {
+    // Inicializa a comunicação serial
+    Serial.begin(115200);
 
-    // Criar instâncias dos atuadores
-    AtuadorLuz atuadorLuz;
-    AtuadorArCondicionado atuadorArCondicionado;
+    // Conecta à rede Wi-Fi
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(1000);
+        Serial.println("Conectando-se ao Wi-Fi...");
+    }
+    Serial.println("Conectado ao Wi-Fi");
 
-    // Criar sistema de automação
-    SistemaAutomacao sistema;
+    // Configuração das rotas
+    server.on("/sensors", HTTP_GET, handleGetSensorsData);   // Rota para obter dados dos sensores
+    server.on("/actuators", HTTP_POST, handleControlActuators);  // Rota para controlar atuadores
+    server.on("/routine", HTTP_POST, handleSetRoutine);   // Rota para configurar rotina automatizada
 
-    // Exemplo de leitura de sensores
-    sensorLuz.readData();
-    sensorTemperatura.readData();
-    sensorUmidade.readData();
-    sensorGases.readData();
-    sensorPresenca.readData();
+    // Inicia o servidor HTTP
+    server.begin();
+    Serial.println("Servidor HTTP iniciado");
+}
 
-    // Exemplo de controle de atuadores
-    atuadorLuz.control(true); // Ligar luz
-    atuadorArCondicionado.control(false); // Desligar ar-condicionado
-
-    // Configuração de rotinas
-    bool presenca = rand() % 2 == 0; // Simula a presença ou ausência
-    sistema.configurarRotinaPresenca(presenca);
-
-    return 0;
+void loop() {
+    server.handleClient();  // Mantém o servidor HTTP funcionando
 }
